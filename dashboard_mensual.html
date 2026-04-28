@@ -154,6 +154,8 @@
 
 <div class="section">
   <h2 class="section-title">Comparativa de Productos</h2>
+  <p class="subtitle" style="margin-bottom:12px">Seleccioná un producto para ver hasta 3 métricas superpuestas. Sin selección muestra todos los productos.</p>
+  <div class="product-select" id="compare-product-select" style="margin-bottom:12px"></div>
   <div class="tabs" id="prod-compare-tabs"></div>
   <div class="chart-row">
     <div class="chart-box chart-full"><div id="chart-prod-compare"></div></div>
@@ -413,11 +415,24 @@ function renderSummaryTable(){
 
 // ── PRODUCT PAGE ────────────────────────────────────────────
 let prodPageInit = false;
-let compareMetric = 'sales';
-let selectedProduct = GROUP_NAMES[0];
+let compareProduct = null; // null = all products mode
+let selectedMetrics = ['sales']; // multi-select up to 3
+let selectedProduct = GROUP_NAMES[0]; // for detail section
+
+const ALL_METRICS = [
+  {key:'sales',label:'Ventas $',color:'#3b82f6',suffix:'',type:'bar'},
+  {key:'ppc_spend',label:'PPC Spend',color:'#f97316',suffix:'',type:'bar'},
+  {key:'ppc_sales',label:'PPC Sales',color:'#06b6d4',suffix:'',type:'bar'},
+  {key:'net_profit',label:'Net Profit',color:'#eab308',suffix:'',type:'scatter'},
+  {key:'profit',label:'Profit (pre-PPC)',color:'#22c55e',suffix:'',type:'bar'},
+  {key:'margin',label:'Margin %',color:'#a855f7',suffix:'%',type:'scatter'},
+  {key:'roas',label:'ROAS',color:'#ef4444',suffix:'x',type:'scatter'},
+  {key:'tacos',label:'TACoS %',color:'#ec4899',suffix:'%',type:'scatter'},
+];
 
 function initProductPage() {
   prodPageInit = true;
+  renderCompareProductSelect();
   renderCompareTabs();
   chartProdCompare();
   renderCompareTable();
@@ -426,44 +441,139 @@ function initProductPage() {
   renderEvolutionTable();
 }
 
-function renderCompareTabs() {
-  const metrics = [
-    {key:'sales',label:'Ventas $'}, {key:'ppc_spend',label:'PPC Spend'},
-    {key:'net_profit',label:'Net Profit'}, {key:'margin',label:'Margin %'},
-    {key:'roas',label:'ROAS'}, {key:'tacos',label:'TACoS %'},
-  ];
-  let html = '';
-  metrics.forEach(m => {
-    html += `<button class="tab ${m.key===compareMetric?'active':''}" onclick="switchCompare('${m.key}')">${m.label}</button>`;
+function renderCompareProductSelect() {
+  let html = `<button class="product-btn ${compareProduct===null?'active':''}" onclick="selectCompareProduct(null)">Todos</button>`;
+  GROUP_NAMES.forEach(name => {
+    html += `<button class="product-btn ${name===compareProduct?'active':''}" onclick="selectCompareProduct('${name}')">${name}</button>`;
   });
+  document.getElementById('compare-product-select').innerHTML = html;
+}
+
+function selectCompareProduct(name) {
+  if (name === null) {
+    compareProduct = null;
+    selectedMetrics = [selectedMetrics[0] || 'sales'];
+  } else {
+    compareProduct = name;
+    if (selectedMetrics.length === 0) selectedMetrics = ['sales'];
+  }
+  renderCompareProductSelect();
+  renderCompareTabs();
+  chartProdCompare();
+}
+
+function renderCompareTabs() {
+  let html = '';
+  ALL_METRICS.forEach(m => {
+    let isActive = selectedMetrics.includes(m.key);
+    html += `<button class="tab ${isActive?'active':''}" onclick="toggleCompareMetric('${m.key}')">${m.label}</button>`;
+  });
+  if (compareProduct) {
+    html += `<span style="color:var(--muted);font-size:12px;padding:8px;align-self:center">(hasta 3 métricas)</span>`;
+  }
   document.getElementById('prod-compare-tabs').innerHTML = html;
 }
 
-function switchCompare(m) { compareMetric=m; renderCompareTabs(); chartProdCompare(); }
+function toggleCompareMetric(key) {
+  if (compareProduct === null) {
+    selectedMetrics = [key];
+  } else {
+    let idx = selectedMetrics.indexOf(key);
+    if (idx >= 0) {
+      selectedMetrics.splice(idx, 1);
+      if (selectedMetrics.length === 0) selectedMetrics = ['sales'];
+    } else {
+      if (selectedMetrics.length >= 3) selectedMetrics.shift();
+      selectedMetrics.push(key);
+    }
+  }
+  renderCompareTabs();
+  chartProdCompare();
+}
 
 function chartProdCompare() {
-  const top = GROUPED_TOTALS.slice(0, 12);
-  const colors = ['#3b82f6','#22c55e','#a855f7','#f97316','#06b6d4','#eab308','#ef4444','#ec4899','#14b8a6','#8b5cf6','#f43f5e','#84cc16'];
   let traces = [];
-  top.forEach((g, i) => {
-    let vals = GROUPED[g.name][compareMetric];
-    traces.push({
-      x: MONTHS, y: vals, type: 'scatter', mode: 'lines+markers',
-      name: g.name, line: { color: colors[i % 12], width: 2 }, marker: { size: 5 },
+  let layout = { ...layout_base, legend: { ...layout_base.legend, y: -0.25 } };
+
+  if (compareProduct === null) {
+    // All products, single metric
+    const mk = selectedMetrics[0];
+    const mInfo = ALL_METRICS.find(m => m.key === mk);
+    const top = GROUPED_TOTALS.slice(0, 12);
+    const pColors = ['#3b82f6','#22c55e','#a855f7','#f97316','#06b6d4','#eab308','#ef4444','#ec4899','#14b8a6','#8b5cf6','#f43f5e','#84cc16'];
+    top.forEach((g, i) => {
+      traces.push({
+        x: MONTHS, y: GROUPED[g.name][mk], type: 'scatter', mode: 'lines+markers',
+        name: g.name, line: { color: pColors[i % 12], width: 2 }, marker: { size: 5 },
+      });
     });
-  });
-  let titles = {
-    sales: 'Ventas por Producto', ppc_spend: 'PPC Spend por Producto',
-    net_profit: 'Net Profit por Producto', margin: 'Margin % por Producto',
-    roas: 'ROAS por Producto', tacos: 'TACoS % por Producto',
-  };
-  let suffix = ['margin','tacos'].includes(compareMetric) ? '%' : (compareMetric==='roas' ? 'x' : '');
-  Plotly.newPlot('chart-prod-compare', traces, {
-    ...layout_base,
-    title: { text: titles[compareMetric], font: { size: 15, color: '#e4e4e7' } },
-    yaxis: { ...layout_base.yaxis, ticksuffix: suffix },
-    legend: { ...layout_base.legend, y: -0.35 },
-  }, config);
+    layout.title = { text: mInfo.label + ' por Producto', font: { size: 15, color: '#e4e4e7' } };
+    layout.yaxis = { ...layout_base.yaxis, ticksuffix: mInfo.suffix };
+  } else {
+    // Single product, multiple metrics
+    const d = GROUPED[compareProduct];
+    let needsY2 = false;
+    let y1Units = null;
+    let y2Units = null;
+
+    selectedMetrics.forEach((mk, i) => {
+      const mInfo = ALL_METRICS.find(m => m.key === mk);
+      const isPercent = ['margin','tacos'].includes(mk);
+      const isRoas = mk === 'roas';
+      const isDollar = !isPercent && !isRoas;
+      const unit = isPercent ? '%' : (isRoas ? 'x' : '$');
+
+      let useY2 = false;
+      if (i === 0) {
+        y1Units = unit;
+      } else if (unit !== y1Units && !y2Units) {
+        y2Units = unit;
+        useY2 = true;
+        needsY2 = true;
+      } else if (unit !== y1Units && y2Units === unit) {
+        useY2 = true;
+      } else if (unit !== y1Units) {
+        useY2 = true;
+        needsY2 = true;
+      }
+
+      let trace = {
+        x: MONTHS, y: d[mk], name: mInfo.label,
+        marker: { color: mInfo.color },
+      };
+
+      if (mInfo.type === 'bar') {
+        trace.type = 'bar';
+      } else {
+        trace.type = 'scatter';
+        trace.mode = 'lines+markers+text';
+        trace.line = { color: mInfo.color, width: 3 };
+        trace.marker = { size: 8 };
+        trace.text = d[mk].map(v => {
+          if (isPercent) return v.toFixed(1) + '%';
+          if (isRoas) return v > 0 ? v.toFixed(2) + 'x' : '';
+          return v >= 1000 ? fmt(v) : '$' + v.toFixed(0);
+        });
+        trace.textposition = 'top center';
+        trace.textfont = { size: 10, color: '#9ca3af' };
+      }
+
+      if (useY2) trace.yaxis = 'y2';
+      traces.push(trace);
+    });
+
+    layout.title = { text: compareProduct + ' — Detalle Multi-Métrica', font: { size: 15, color: '#e4e4e7' } };
+    layout.barmode = 'group';
+    layout.yaxis = { ...layout_base.yaxis, ticksuffix: y1Units === '%' ? '%' : (y1Units === 'x' ? 'x' : '') };
+    if (needsY2) {
+      layout.yaxis2 = {
+        overlaying: 'y', side: 'right', gridcolor: 'transparent',
+        ticksuffix: y2Units === '%' ? '%' : (y2Units === 'x' ? 'x' : ''),
+      };
+    }
+  }
+
+  Plotly.newPlot('chart-prod-compare', traces, layout, config);
 }
 
 function renderCompareTable() {
