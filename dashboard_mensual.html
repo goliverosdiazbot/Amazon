@@ -542,9 +542,7 @@ function chartProdCompare() {
         marker: { color: mInfo.color },
       };
 
-      if (mInfo.type === 'bar') {
-        trace.type = 'bar';
-      } else {
+      {
         trace.type = 'scatter';
         trace.mode = 'lines+markers+text';
         trace.line = { color: mInfo.color, width: 3 };
